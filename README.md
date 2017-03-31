@@ -1,5 +1,5 @@
 # Bluetooth-Rssi
-Application to get rssi value fro Bluetooth device.
+Application to get rssi value from Bluetooth device.
 
 The application is set so that a you can use the getBluetoothDevice() method to connect to an access point of your choosing.
 
