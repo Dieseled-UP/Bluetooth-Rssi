@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Bluetooth Rssi</string>
+    <string name="start_btn">Start</string>
+    <string name="pause_btn">Pause</string>
+    <string name="resume_btn">Resume</string>
+    <string name="ap1">AP1</string>
+    <string name="ble_not_supported">BLE not Available</string>
+</resources>
