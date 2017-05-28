@@ -43,12 +43,14 @@ public class MainActivity extends AppCompatActivity {
 
     private final int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 123;
 
-    private static final String REGISTER_URL = "http://pathTo/yourUploadFile.php";
-    private static final String KEY_AP = "ssid";
+    private static final String REGISTER_URL = "http://localhost/blue-rssi-upload.php";
+    private static final String KEY_SSID = "ssid";
     private static final String KEY_RSSI = "rssi";
+    private static final String KEY_DISTANCE = "distance";
 
     private String name;
     private String rssi;
+    private String distance;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,8 +113,9 @@ public class MainActivity extends AppCompatActivity {
                     // Get
                     name = device.getName();
                     rssi = Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE));
+                    distance = calculateDistance(Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE)));
 
-                    String apDetails = name + "\n" + rssi + "\n";
+                    String apDetails = name + "\n" + rssi + "\n" + distance + "\n";
 
                     // Add to List that will be displayed to user
                     mArrayList.add(apDetails);
@@ -125,14 +128,15 @@ public class MainActivity extends AppCompatActivity {
 
                 // Create a StringRequest and add ssid and rssi as the parameters
                 StringRequest stringRequest = new StringRequest(Request.Method.POST, REGISTER_URL,
-                        response -> Toast.makeText(MainActivity.this, response, Toast.LENGTH_LONG).show(),
+                        response -> Toast.makeText(MainActivity.this, response, Toast.LENGTH_SHORT).show(),
                         error -> Toast.makeText(MainActivity.this, error.toString(), Toast.LENGTH_LONG).show()) {
                     @Override
                     protected Map<String, String> getParams() {
 
                         Map<String, String> params = new HashMap<>();
-                        params.put(KEY_AP, name);
+                        params.put(KEY_SSID, name);
                         params.put(KEY_RSSI, rssi);
+                        params.put(KEY_DISTANCE, distance);
                         return params;
                     }
 
@@ -175,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
      */
     public boolean getBluetoothDevice(String device) {
 
-        return device.equalsIgnoreCase("Bluetooth Device");
+        return device.equalsIgnoreCase("TestPhoneOne");
 
     }
 
@@ -298,5 +302,22 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", null)
                 .create()
                 .show();
+    }
+
+    /**
+     * Method to calculate rssi into distance in meters
+     * @param value rssi read
+     * @return calculated distance
+     */
+    private String calculateDistance(String value) {
+
+        double distance;
+        // The one meter read and the path-loss exponent
+        double _1MeterRead = -53.2376;
+        double pathLossExponent = 2;
+
+        distance = Math.pow(10, ((Double.valueOf(value) - _1MeterRead) / (-10 * pathLossExponent)));
+
+        return String.valueOf(distance);
     }
 }
