@@ -1,56 +1,63 @@
 package com.denis.bourne.bluetoothrssi;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.content.BroadcastReceiver;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.Toast;
-
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.toolbox.StringRequest;
-import com.android.volley.toolbox.Volley;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/*import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;*/
+
 public class MainActivity extends AppCompatActivity {
 
     private final String TAG = MainActivity.class.getSimpleName();
 
     private BluetoothAdapter btAdapter;
-    private BluetoothScanReceiver mBluetoothScanReceiver;
-    private ListView mListView;
-    private IntentFilter filter;
-    private ArrayAdapter<String> mArrayAdapter;
-    private List<String> mArrayList = new ArrayList<>();
-    private Button start;
+    private BluetoothLeScanner bluetoothLeScanner;
+    private boolean scanning;
+    private static final int REQUEST_ENABLE_BT = 1;
+    private Button btnScan;
+    private ListView listViewLE;
+    private List<BluetoothDevice> listBluetoothDevice;
+    private Handler handler;
+    private static final long SCAN_PERIOD = 10000;
 
     private final int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 123;
 
-    private static final String REGISTER_URL = "http://localhost/blue-rssi-upload.php";
+    /*private static final String REGISTER_URL = "http://localhost/blue-rssi-upload.php";
     private static final String KEY_SSID = "ssid";
     private static final String KEY_RSSI = "rssi";
     private static final String KEY_DISTANCE = "distance";
 
     private String name;
     private String rssi;
-    private String distance;
+    private String distance;*/
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,17 +67,20 @@ public class MainActivity extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        handler = new Handler();
 
-        mListView = (ListView) findViewById(R.id.listView1);
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
 
-        // Initializes Bluetooth adapter.
-        mBluetoothScanReceiver = new BluetoothScanReceiver();
-        btAdapter = BluetoothAdapter.getDefaultAdapter();
+            Toast.makeText(this, "BLE Not Supported", Toast.LENGTH_SHORT).show();
+            finish();
+        }
 
-        // If bluetooth is not switched on
-        if (btAdapter == null || !btAdapter.isEnabled()) {
-            // turn on BT
-            turnOnBT();
+        getBluetoothAdapterAndLeScanner();
+
+        if (btAdapter != null && !btAdapter.isEnabled()) {
+
+            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
         }
 
         if (btAdapter == null) {
@@ -78,97 +88,25 @@ public class MainActivity extends AppCompatActivity {
             finish();
         }
 
-        // Register Receiver and filters
-        mBluetoothScanReceiver = new BluetoothScanReceiver();
-        filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        this.registerReceiver(mBluetoothScanReceiver, filter);
-        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        this.registerReceiver(mBluetoothScanReceiver, filter);
+        btnScan = (Button) findViewById(R.id.start);
+        btnScan.setOnClickListener(v -> {
+            scanning = true;
+            scanLeDevice(scanning);
+        });
 
-        start = (Button) findViewById(R.id.start);
-        start.setOnClickListener(v -> startScan());
+        listViewLE = (ListView) findViewById(R.id.listView1);
+
+        listBluetoothDevice = new ArrayList<>();
+        ListAdapter adapterLeScanResult = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, listBluetoothDevice);
+        listViewLE.setAdapter(adapterLeScanResult);
     }
 
-    class BluetoothScanReceiver extends BroadcastReceiver {
+    private void getBluetoothAdapterAndLeScanner() {
 
-        @Override
-        public void onReceive(Context context, Intent intent) {
-
-            String action = intent.getAction();
-
-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-
-                // Let user know that a scan is in the process
-                Log.i(TAG, " Scan Started");
-
-                // Get the details of the device that is been scanned
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-
-                // Check that we are getting the device we want
-                if (getBluetoothDevice(device.getName())) {
-
-                    // Let user know the device has been added
-                    Toast.makeText(getApplicationContext(), "Device Added " + " : " + device.getName(), Toast.LENGTH_SHORT).show();
-
-                    // Get
-                    name = device.getName();
-                    rssi = Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE));
-                    distance = calculateDistance(Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE)));
-
-                    String apDetails = name + "\n" + rssi + "\n" + distance + "\n";
-
-                    // Add to List that will be displayed to user
-                    mArrayList.add(apDetails);
-                }
-
-                // Display details in ListView
-                mArrayAdapter = new ArrayAdapter<>(getApplicationContext(),
-                        android.R.layout.simple_list_item_1, mArrayList);
-                mListView.setAdapter(mArrayAdapter);
-
-                // Create a StringRequest and add ssid and rssi as the parameters
-                StringRequest stringRequest = new StringRequest(Request.Method.POST, REGISTER_URL,
-                        response -> Toast.makeText(MainActivity.this, response, Toast.LENGTH_SHORT).show(),
-                        error -> Toast.makeText(MainActivity.this, error.toString(), Toast.LENGTH_LONG).show()) {
-                    @Override
-                    protected Map<String, String> getParams() {
-
-                        Map<String, String> params = new HashMap<>();
-                        params.put(KEY_SSID, name);
-                        params.put(KEY_RSSI, rssi);
-                        params.put(KEY_DISTANCE, distance);
-                        return params;
-                    }
-
-                };
-
-                // Create the RequestQueue and add the new StringRequest
-                RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
-                requestQueue.add(stringRequest);
-
-            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-
-                // Clear details to refresh the screen for each new scan
-                if (mArrayList.size() > 0) {
-                    try {
-                        mArrayList.clear();
-                        mArrayAdapter.clear();
-                        mArrayAdapter.notifyDataSetChanged();
-                    } catch (final Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-
-                // Let user know that the scan has completed
-                Log.i(TAG, "Scan Finished");
-                // Call onPause to release the receiver and stop discovery
-                onPause();
-
-                // Start the process again with the start button which we
-                // click programmatically
-                start.performClick();
-            }
-        }
+        // Get BluetoothAdapter and BluetoothLeScanner.
+        final BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        btAdapter = bluetoothManager.getAdapter();
+        bluetoothLeScanner = btAdapter.getBluetoothLeScanner();
     }
 
     /**
@@ -183,49 +121,120 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    /**
-     * Method to refresh the filters and Receiver this hack is needed as
-     * we will continuously loop the Discovery() method which Android
-     * does not like when it comes to Bluetooth
-     */
-    private void startScan() {
+    @Override
+    protected void onResume() {
 
-        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        this.registerReceiver(mBluetoothScanReceiver, filter);
-        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        this.registerReceiver(mBluetoothScanReceiver, filter);
+        super.onResume();
 
-        btAdapter.startDiscovery();
+        // Ensures Bluetooth is enabled on the device.  If Bluetooth is not currently enabled,
+        // fire an intent to display a dialog asking the user to grant permission to enable it.
+        if (!btAdapter.isEnabled()) {
+
+            if (!btAdapter.isEnabled()) {
+
+                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        // User chose not to enable Bluetooth.
+        if (requestCode == REQUEST_ENABLE_BT && resultCode == Activity.RESULT_CANCELED) {
+
+            finish();
+            return;
+        }
+
+        getBluetoothAdapterAndLeScanner();
+
+        // Checks if Bluetooth is supported on the device.
+        if (btAdapter == null) {
+
+            Toast.makeText(this, "bluetoothManager.getAdapter()==null", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Make sure we're not doing discovery anymore
-        if (btAdapter != null) {
-            btAdapter.cancelDiscovery();
+
+        scanLeDevice(false);
+    }
+
+    private ScanCallback scanCallback = new ScanCallback() {
+
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+
+            super.onScanResult(callbackType, result);
+
+            Log.i(TAG, result.getDevice().getName());
+
+            addBluetoothDevice(result.getDevice());
         }
 
-        // Unregister broadcast listeners
-        unregisterReceiver(mBluetoothScanReceiver);
-    }
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
 
-    @Override
-    protected void onResume() {
+            super.onBatchScanResults(results);
+            for (ScanResult result : results) {
 
-        super.onResume();
-        registerReceiver(mBluetoothScanReceiver, filter);
-    }
+                addBluetoothDevice(result.getDevice());
+            }
+        }
 
-    /**
-     * Method to open Bluetooth setting to allow user to
-     * switch on Bluetooth
-     */
-    protected void turnOnBT() {
+        @Override
+        public void onScanFailed(int errorCode) {
 
-        int REQUEST_ENABLE_BT = 1;
-        Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-        startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+            super.onScanFailed(errorCode);
+            Toast.makeText(MainActivity.this, "onScanFailed: " + String.valueOf(errorCode), Toast.LENGTH_LONG).show();
+        }
+
+        private void addBluetoothDevice(BluetoothDevice device) {
+
+            if (!listBluetoothDevice.contains(device)) {
+
+                listBluetoothDevice.add(device);
+                listViewLE.invalidateViews();
+            }
+        }
+    };
+
+    private void scanLeDevice(final boolean enable) {
+
+        if (enable) {
+
+            listBluetoothDevice.clear();
+            listViewLE.invalidateViews();
+
+            // Stops scanning after a pre-defined scan period.
+            handler.postDelayed(() -> {
+
+                bluetoothLeScanner.stopScan(scanCallback);
+                listViewLE.invalidateViews();
+
+                Toast.makeText(MainActivity.this, "Scan timeout", Toast.LENGTH_LONG).show();
+
+                scanning = false;
+                btnScan.setEnabled(true);
+
+            }, SCAN_PERIOD);
+
+            bluetoothLeScanner.startScan(scanCallback);
+            scanning = true;
+            btnScan.setEnabled(false);
+
+        } else {
+
+            bluetoothLeScanner.stopScan(scanCallback);
+            scanning = false;
+            btnScan.setEnabled(true);
+        }
     }
 
     /**
@@ -303,12 +312,13 @@ public class MainActivity extends AppCompatActivity {
                 .create()
                 .show();
     }
-
-    /**
+/*
+    *//**
      * Method to calculate rssi into distance in meters
+     *
      * @param value rssi read
      * @return calculated distance
-     */
+     *//*
     private String calculateDistance(String value) {
 
         double distance;
@@ -319,5 +329,5 @@ public class MainActivity extends AppCompatActivity {
         distance = Math.pow(10, ((Double.valueOf(value) - _1MeterRead) / (-10 * pathLossExponent)));
 
         return String.valueOf(distance);
-    }
+    }*/
 }
