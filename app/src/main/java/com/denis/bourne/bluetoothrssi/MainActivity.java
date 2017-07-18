@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
 
     private final int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 123;
 
-    private static final String REGISTER_URL = "https://bournedev.com/blue-rssi-upload.php";
+    private static final String REGISTER_URL = "https://host/blue-rssi-upload.php";
     private static final String KEY_SSID = "ssid";
     private static final String KEY_RSSI = "rssi";
     private static final String KEY_DISTANCE = "distance";
@@ -110,8 +110,8 @@ public class MainActivity extends AppCompatActivity {
                     // Let user know the device has been added
                     Toast.makeText(getApplicationContext(), "Device Added " + " : " + device.getName(), Toast.LENGTH_SHORT).show();
 
-                    // Get
-                    name = "TestPhoneOne";
+                    // Force name for null values stop app crashing
+                    name = "Bluetooth device";
                     rssi = Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE));
                     distance = calculateDistance(Short.toString(intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE)));
 
@@ -180,9 +180,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean getBluetoothDevice(String device) {
 
         if (device == null) {
-            device = "TestPhoneOne";
+            device = "Bluetooth device";
         }
-        return device.equalsIgnoreCase("TestPhoneOne");
+        return device.equalsIgnoreCase("Bluetooth device");
 
     }
 
